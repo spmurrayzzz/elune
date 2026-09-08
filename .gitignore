@@ -1,0 +1,8 @@
+frontend/node_modules/
+frontend/dist/
+backend/data/
+backend/elune
+.DS_Store
+work/
+integrations/pi/node_modules/
+integrations/pi/*.tgz
