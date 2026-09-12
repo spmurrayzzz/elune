@@ -53,6 +53,7 @@ func main() {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "elune"})
 	})
+	mux.HandleFunc("POST /api/ingest", a.ingest)
 	mux.HandleFunc("GET /api/events", a.events)
 	mux.HandleFunc("GET /api/traces", a.traces)
 	mux.HandleFunc("GET /api/traces/{id}", a.trace)
