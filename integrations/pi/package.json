@@ -12,7 +12,8 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test test/*.test.mjs"
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
+    "test:integration": "node test/integration.mjs"
   },
   "engines": {
     "node": ">=22.19.0"
