@@ -210,7 +210,7 @@ onUnmounted(()=>{disposed=true;liveEvents?.close();clearTimeout(refreshTimer);wi
 <template>
   <div class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="sidebar">
-      <a href="#/traces" class="brand" aria-label="elune home"><span>elune</span></a>
+      <a href="#/traces" class="brand" aria-label="elune home"><svg class="brand-symbol" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M4 7C1 20 7 29 16 29S31 20 28 7C27 17 22 23 16 25C10 23 5 17 4 7Z" fill="currentColor"/><path d="m16 2 3.5 7.5L16 17l-3.5-7.5Z" fill="currentColor"/></svg><span>elune</span></a>
       <div class="project-wrap"><button class="project-selector" aria-label="Choose project" @click="menu = menu === 'project' ? '' : 'project'"><span class="project-icon"><Folder :size="15"/></span><span class="project-label">Agent workspace<small>Local project</small></span><ChevronDown :size="13"/></button><div v-if="menu === 'project'" class="popover project-popover"><span class="menu-title">Projects</span><button @click="menu=''" class="menu-item"><Folder :size="14"/> Agent workspace <Check :size="14"/></button><div class="menu-note">Traces saved on this computer.</div></div></div>
       <nav class="main-nav" aria-label="Main navigation">
         <a href="#/overview" aria-label="Overview" class="nav-link" :class="{active:view==='overview'}"><BarChart3 :size="16"/><span>Overview</span></a>
