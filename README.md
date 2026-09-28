@@ -93,3 +93,9 @@ npm --prefix integrations/pi run test:integration
 The default test model is `openai-codex/gpt-6-sol`. Set `PI_TEST_MODEL` to use another available model.
 
 The check saves fixtures, Pi sessions, and trace queues in `work/pi-integration/`. It also adds test traces to the configured backend.
+
+## License
+
+Copyright 2026 Stephen Murray.
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
