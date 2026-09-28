@@ -1,8 +1,9 @@
 package main
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
-	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -24,12 +25,17 @@ func (a *app) ingest(w http.ResponseWriter, r *http.Request) {
 	}
 	a.store.mu.Lock()
 	defer a.store.mu.Unlock()
-	i := a.store.find(trace.ID)
+	tx, err := a.store.writer.BeginTx(r.Context(), nil)
+	if err != nil {
+		storeError(w, "Save trace", err)
+		return
+	}
+	defer tx.Rollback()
+	current, err := getTrace(r.Context(), tx, trace.ID)
 	status := http.StatusCreated
 	trace.Bookmarked = false
 	trace.Scores = []Score{}
-	if i >= 0 {
-		current := a.store.traces[i]
+	if err == nil {
 		if current.Source != "pi" {
 			writeError(w, http.StatusConflict, "Trace identifier already belongs to another source")
 			return
@@ -45,6 +51,9 @@ func (a *app) ingest(w http.ResponseWriter, r *http.Request) {
 		trace.Bookmarked = current.Bookmarked
 		trace.Scores = current.Scores
 		status = http.StatusOK
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		storeError(w, "Read trace", err)
+		return
 	}
 	if trace.Tags == nil {
 		trace.Tags = []string{}
@@ -52,18 +61,14 @@ func (a *app) ingest(w http.ResponseWriter, r *http.Request) {
 	if trace.Observations == nil {
 		trace.Observations = []Observation{}
 	}
-	updated := append([]Trace{}, a.store.traces...)
-	if i < 0 {
-		updated = append(updated, trace)
-	} else {
-		updated[i] = trace
-	}
-	if err := a.store.persist(updated); err != nil {
-		log.Printf("Save trace: %v", err)
-		writeError(w, http.StatusInternalServerError, "Could not save trace")
+	if err := writeTrace(r.Context(), tx, trace, false); err != nil {
+		storeError(w, "Save trace", err)
 		return
 	}
-	a.store.traces = updated
+	if err := tx.Commit(); err != nil {
+		storeError(w, "Save trace", err)
+		return
+	}
 	a.broadcast(trace)
 	writeJSON(w, status, trace)
 }

@@ -1,14 +1,5 @@
 package main
 
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
-	"time"
-)
-
 type Score struct {
 	ID        string  `json:"id"`
 	TraceID   string  `json:"traceId"`
@@ -77,76 +68,4 @@ type Session struct {
 	Latency     float64  `json:"latency"`
 	Environment string   `json:"environment"`
 	TraceIDs    []string `json:"traceIds"`
-}
-
-type Store struct {
-	mu     sync.RWMutex
-	path   string
-	traces []Trace
-}
-
-type storedData struct {
-	Version int     `json:"version"`
-	Traces  []Trace `json:"traces"`
-}
-
-func openStore(path string) (*Store, error) {
-	s := &Store{path: path}
-	b, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		s.traces = seedTraces(time.Now().UTC())
-		if err := s.persist(s.traces); err != nil {
-			return nil, err
-		}
-		return s, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var data storedData
-	if err := json.Unmarshal(b, &data); err != nil {
-		return nil, fmt.Errorf("read stored data: %w", err)
-	}
-	if data.Version != 1 || data.Traces == nil {
-		return nil, fmt.Errorf("unsupported or invalid data file: %s", path)
-	}
-	s.traces = data.Traces
-	return s, nil
-}
-
-func (s *Store) persist(traces []Trace) error {
-	b, err := json.MarshalIndent(storedData{Version: 1, Traces: traces}, "", "  ")
-	if err != nil {
-		return err
-	}
-	dir := filepath.Dir(s.path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(dir, ".store-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if _, err := f.Write(b); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), s.path)
-}
-
-func (s *Store) find(id string) int {
-	for i := range s.traces {
-		if s.traces[i].ID == id {
-			return i
-		}
-	}
-	return -1
 }

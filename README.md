@@ -1,6 +1,6 @@
 # elune
 
-Inspect AI agent traces, model costs, tool calls, sessions, and scores on your computer. Built with Vue 3, Vite, and Go.
+Inspect AI agent traces, model costs, tool calls, sessions, and scores on your computer. Built with Vue 3, Vite, Go, and SQLite.
 
 <table>
   <tr>
@@ -27,7 +27,9 @@ make run
 
 Open [elune](http://127.0.0.1:8080).
 
-The first start creates 96 sample traces. With `make run`, the app saves data in `backend/data/store.json`.
+With `make run`, the app saves data in `backend/data/elune.db`. SQLite uses WAL mode to allow reads during writes.
+
+For a new database, elune imports `backend/data/store.json` if that file exists. It keeps the original JSON file unchanged. Without existing data, it creates 96 sample traces.
 
 For frontend development, keep the backend running. In a second terminal, run `npm --prefix frontend run dev`. Open `http://127.0.0.1:5173`.
 
@@ -35,7 +37,7 @@ For frontend development, keep the backend running. In a second terminal, run `n
 
 - Keep elune and `PI_TRACE_URL` local. The server has no user authentication or built-in encryption. Do not expose it through a public proxy or tunnel.
 - Traces can contain prompts, tool results, file paths, and secrets. The extension does not remove secrets. Review exports and screenshots before sharing them.
-- Keep data and queues private. Git ignores `backend/data/` and `work/`. Exclude custom storage paths and exports from version control.
+- Database files and trace queues are not encrypted. Git ignores `backend/data/` and `work/`. Exclude custom storage paths and exports from version control.
 - Pi sends model requests to your selected provider. The extension sends traces to `PI_TRACE_URL`.
 
 ## Connect Pi
@@ -61,13 +63,15 @@ Set these environment variables before you start the related process.
 | Process | Variable | Default |
 | --- | --- | --- |
 | Backend | `PORT` | `8080` |
-| Backend | `DATA_PATH` | `data/store.json` |
+| Backend | `DATA_PATH` | `data/elune.db` |
 | Backend | `FRONTEND_DIST` | `../frontend/dist` |
 | Pi | `PI_TRACE_URL` | `http://127.0.0.1:8080` |
 | Pi | `PI_TRACE_ENVIRONMENT` | `local` |
 | Pi | `PI_TRACE_QUEUE_DIR` | `.elune-queue` inside the Pi session directory |
 
 Backend paths are relative to its working directory. `make run` starts the backend from `backend/`.
+
+If `DATA_PATH` ends in `.json`, elune imports that file into the same path with a `.db` extension.
 
 ## Run checks
 

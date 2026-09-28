@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +18,53 @@ import (
 
 func testApp(t *testing.T) *app {
 	t.Helper()
-	return &app{store: &Store{path: filepath.Join(t.TempDir(), "store.json"), traces: []Trace{}}}
+	path := filepath.Join(t.TempDir(), "store.json")
+	if err := os.WriteFile(path, []byte(`{"version":1,"traces":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return &app{store: store}
+}
+
+func storedTraces(t *testing.T, store *Store) []Trace {
+	t.Helper()
+	traces, err := queryTraces(context.Background(), store.db, "1=1", nil, "t.id", 0, 0, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return traces
+}
+
+func replaceTraces(t *testing.T, store *Store, traces []Trace) {
+	t.Helper()
+	tx, err := store.writer.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM traces"); err != nil {
+		t.Fatal(err)
+	}
+	for _, trace := range traces {
+		if trace.Timestamp == "" {
+			trace.Timestamp = testTrace().Timestamp
+		}
+		for i := range trace.Observations {
+			if trace.Observations[i].ID == "" {
+				trace.Observations[i].ID = fmt.Sprintf("observation-%d", i)
+			}
+		}
+		if err := writeTrace(context.Background(), tx, trace, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func testTrace() Trace {
@@ -107,8 +155,10 @@ func TestIngestSnapshotsPersistAndPreserveAnnotations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reopened.traces) != 1 || reopened.traces[0].Revision != 3 || !reopened.traces[0].Bookmarked || len(reopened.traces[0].Scores) != 1 {
-		t.Fatalf("incorrect persisted state: %+v", reopened.traces)
+	defer reopened.Close()
+	persisted := storedTraces(t, reopened)
+	if len(persisted) != 1 || persisted[0].Revision != 3 || !persisted[0].Bookmarked || len(persisted[0].Scores) != 1 {
+		t.Fatalf("incorrect persisted state: %+v", persisted)
 	}
 }
 
@@ -150,7 +200,7 @@ func TestIngestRejectsInvalidSnapshots(t *testing.T) {
 			trace := testTrace()
 			mutate(&trace)
 			response := ingestRequest(t, a, trace)
-			if response.Code != http.StatusBadRequest || len(a.store.traces) != 0 {
+			if response.Code != http.StatusBadRequest || len(storedTraces(t, a.store)) != 0 {
 				t.Fatalf("accepted invalid trace: %d %s", response.Code, response.Body.String())
 			}
 		})
@@ -169,7 +219,7 @@ func TestIngestRejectsInvalidJSONAndLargeRequests(t *testing.T) {
 	for _, body := range []string{`{`, `{}`, `{"trace":{}} {}`, `{"trace":{},"other":true}`, `{"trace":{"revision":-1}}`, `{"trace":{"metadata":{"large":"` + strings.Repeat("a", 8<<20) + `"}}}`} {
 		response := httptest.NewRecorder()
 		a.ingest(response, httptest.NewRequest(http.MethodPost, "/api/ingest", strings.NewReader(body)))
-		if response.Code != http.StatusBadRequest || len(a.store.traces) != 0 {
+		if response.Code != http.StatusBadRequest || len(storedTraces(t, a.store)) != 0 {
 			t.Fatalf("accepted invalid body: status %d", response.Code)
 		}
 	}
@@ -180,11 +230,11 @@ func TestIngestProtectsTraceIdentityAndOtherSources(t *testing.T) {
 	trace := testTrace()
 	other := trace
 	other.Source = ""
-	a.store.traces = []Trace{other}
+	replaceTraces(t, a.store, []Trace{other})
 	if response := ingestRequest(t, a, trace); response.Code != http.StatusConflict {
 		t.Fatalf("overwrote other source: %d", response.Code)
 	}
-	a.store.traces = []Trace{trace}
+	replaceTraces(t, a.store, []Trace{trace})
 	for _, field := range []string{"session", "timestamp"} {
 		updated := testTrace()
 		updated.Revision = 2
@@ -201,13 +251,13 @@ func TestIngestProtectsTraceIdentityAndOtherSources(t *testing.T) {
 
 func TestIngestPersistenceFailureDoesNotPublish(t *testing.T) {
 	a := testApp(t)
-	if err := os.Mkdir(a.store.path, 0700); err != nil {
+	if _, err := a.store.writer.Exec("CREATE TRIGGER fail_write BEFORE INSERT ON traces BEGIN SELECT RAISE(ABORT, 'write failure'); END"); err != nil {
 		t.Fatal(err)
 	}
 	subscriber := make(chan traceNotice, 1)
 	a.subscribers = map[chan traceNotice]struct{}{subscriber: {}}
 	response := ingestRequest(t, a, testTrace())
-	if response.Code != http.StatusInternalServerError || len(a.store.traces) != 0 || len(subscriber) != 0 {
+	if response.Code != http.StatusInternalServerError || len(storedTraces(t, a.store)) != 0 || len(subscriber) != 0 {
 		t.Fatalf("published failed persistence: %d %s", response.Code, response.Body.String())
 	}
 }
@@ -232,8 +282,10 @@ func TestConcurrentSnapshotsKeepHighestRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reopened.traces) != 1 || reopened.traces[0].Revision != 24 {
-		t.Fatalf("incorrect concurrent state: %+v", reopened.traces)
+	defer reopened.Close()
+	persisted := storedTraces(t, reopened)
+	if len(persisted) != 1 || persisted[0].Revision != 24 {
+		t.Fatalf("incorrect concurrent state: %+v", persisted)
 	}
 }
 
@@ -244,7 +296,7 @@ func TestOverviewUsesGenerationModelsForPi(t *testing.T) {
 	trace.Observations[1].InputTokens, trace.Observations[1].OutputTokens, trace.Observations[1].Cost = 9, 1, 0.01
 	trace.Observations = append(trace.Observations, Observation{ID: "generation-2", Type: "GENERATION", Model: "second-model", InputTokens: 18, OutputTokens: 2, Cost: 0.02})
 	demo := Trace{ID: "demo", Model: "demo-model", TotalTokens: 40, Cost: 0.04}
-	a.store.traces = []Trace{trace, demo}
+	replaceTraces(t, a.store, []Trace{trace, demo})
 	response := httptest.NewRecorder()
 	a.overview(response, httptest.NewRequest(http.MethodGet, "/api/overview", nil))
 	var result struct {
@@ -262,7 +314,7 @@ func TestOverviewUsesGenerationModelsForPi(t *testing.T) {
 
 func TestOverviewCountsSampleModelCalls(t *testing.T) {
 	a := testApp(t)
-	a.store.traces = []Trace{{
+	replaceTraces(t, a.store, []Trace{{
 		ID: "sample", Model: "planning-model", TotalTokens: 60, Cost: 0.06,
 		Observations: []Observation{
 			{Type: "AGENT", Model: "planning-model", InputTokens: 54, OutputTokens: 6, Cost: 0.06},
@@ -270,7 +322,7 @@ func TestOverviewCountsSampleModelCalls(t *testing.T) {
 			{Type: "GENERATION", Model: "answer-model", InputTokens: 18, OutputTokens: 2, Cost: 0.02},
 			{Type: "GENERATION", Model: "answer-model", InputTokens: 27, OutputTokens: 3, Cost: 0.03},
 		},
-	}}
+	}})
 	response := httptest.NewRecorder()
 	a.overview(response, httptest.NewRequest(http.MethodGet, "/api/overview", nil))
 	var result struct {
