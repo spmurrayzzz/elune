@@ -32,74 +32,93 @@ function score(id, traceId, values = {}) {
   return { id, traceId, traceName:traceId, timestamp:timestamp(1), name:id, source:'ANNOTATION', value:1, comment:'', ...values }
 }
 
-async function render(route, values) {
+async function render(route, responses, values = {}) {
   location.hash = `#${route}`
-  return renderToString(createSSRApp({ ...App, setup(props, context) {
-    const state = App.setup(props, context)
-    for (const [key, value] of Object.entries({ now, loading:false, dateRange:'1', ...values })) state[key].value = value
-    return state
-  } }))
+  const requests = []
+  const fetch = globalThis.fetch
+  globalThis.fetch = async path => {
+    const url = new URL(path,'http://localhost')
+    requests.push(url)
+    if (url.pathname === '/api/filters') return {ok:true,json:async () => ({totalTraces:100,scopeTotal:21,sourceCounts:{pi:21,sample:0},environments:[],names:[],levels:[],scoreNames:[],histogram:[]})}
+    assert.ok(url.pathname in responses, `Unexpected request: ${url.pathname}`)
+    return {ok:true,json:async () => responses[url.pathname]}
+  }
+  try {
+    const html = await renderToString(createSSRApp({ ...App, async setup(props, context) {
+      const state = App.setup(props, context)
+      for (const [key, value] of Object.entries({ dateRange:'1', ...values })) state[key].value = value
+      await state.load()
+      assert.equal(state.error.value,'')
+      return state
+    } }))
+    return {html,requests}
+  } finally { globalThis.fetch = fetch }
 }
 
 function tableBody(html) {
   return html.match(/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/)?.[1] || ''
 }
 
-test('recent scores use their own date and the trace source and environment', async () => {
-  const html = await render('/scores', {
-    environment:'local', source:'pi',
-    traces:[trace('old',{timestamp:timestamp(48)}), trace('recent'), trace('other-env',{environment:'production'}), trace('sample',{source:'sample'})],
-    scores:[score('recent-score-old-trace','old'), score('old-score','recent',{timestamp:timestamp(48)}), score('other-env-score','other-env'), score('sample-score','sample')],
-  })
-  const body = tableBody(html)
-  assert.match(body, /recent-score-old-trace/)
-  assert.doesNotMatch(body, /old-score|other-env-score|sample-score/)
+test('recent scores use the server page and send date, source, and environment filters', async () => {
+  const {html,requests} = await render('/scores', {
+    '/api/scores':{data:[score('recent-score-old-trace','old')],total:21,page:2,pageSize:20},
+  }, {environment:'local',source:'pi',scoreSource:'ANNOTATION',scoreName:'quality',page:2})
+  assert.match(tableBody(html), /recent-score-old-trace/)
+  assert.match(html, /21–21 of 21 scores/)
+  const params = requests.find(url => url.pathname === '/api/scores').searchParams
+  assert.equal(params.get('page'),'2')
+  assert.equal(params.get('pageSize'),'20')
+  assert.equal(params.get('source'),'pi')
+  assert.equal(params.get('environment'),'local')
+  assert.equal(params.get('scoreSource'),'ANNOTATION')
+  assert.equal(params.get('scoreName'),'quality')
+  assert.equal(Date.parse(params.get('to'))-Date.parse(params.get('from')),86400000)
+  assert.ok(requests.every(url => url.pathname !== '/api/traces'))
 })
 
-test('session list and conversation totals use the same filtered traces', async () => {
-  const values = {
-    environment:'local', source:'pi',
-    traces:[trace('first',{timestamp:timestamp(3)}), trace('second',{totalTokens:20,cost:0.002}), trace('old',{timestamp:timestamp(48),totalTokens:100}), trace('other-env',{environment:'production',totalTokens:200}), trace('sample',{source:'sample',totalTokens:300})],
+test('session list and conversation use scoped server totals and a separate detail request', async () => {
+  const session = {id:'session-1',userId:'user-1',environment:'local',startTime:timestamp(3),endTime:new Date(now-3600000+2000).toISOString(),traceCount:2,totalTokens:30,cost:0.003}
+  const responses = {
+    '/api/sessions':{data:[session],total:1,page:1,pageSize:20},
+    '/api/sessions/session-1':{session,traces:[trace('first',{timestamp:timestamp(3)}),trace('second',{totalTokens:20,cost:0.002})]},
   }
-  const detail = await render('/sessions/session-1', values)
+  const {html:detail,requests} = await render('/sessions/session-1',responses,{environment:'local',source:'pi'})
   assert.match(detail, /<b>2<\/b> traces/)
   assert.match(detail, /<b>30<\/b> tokens/)
   assert.match(detail, /<b>\$0\.0030<\/b> total cost/)
   assert.match(detail, /input-first/)
   assert.match(detail, /input-second/)
-  assert.doesNotMatch(detail, /input-old|input-other-env|input-sample/)
-  const body = tableBody(await render('/sessions', values))
+  const detailURL = requests.find(url => url.pathname === '/api/sessions/session-1')
+  assert.equal(detailURL.searchParams.get('source'),'pi')
+  assert.equal(detailURL.searchParams.get('environment'),'local')
+  assert.ok(detailURL.searchParams.has('from'))
+  const body = tableBody((await render('/sessions',responses)).html)
   assert.match(body, /count-badge[^>]*>2<\/span>/)
   assert.match(body, />7202\.00s<\/td>/)
   assert.match(body, />30<\/td>/)
   assert.match(body, />\$0\.0030<\/td>/)
 })
 
-test('model calls include sample and Pi generations and preserve legacy samples', async () => {
-  const generation = {type:'GENERATION',model:'model-a',inputTokens:6,outputTokens:4,cost:0.001}
-  const html = await render('/overview', {traces:[
-    trace('sample',{source:'sample',observations:[generation,generation]}),
-    trace('pi',{observations:[generation]}),
-    trace('legacy',{source:'sample',model:'legacy-model'}),
-    trace('tools-only',{source:'sample',model:'unused-model',observations:[{type:'TOOL',model:'unused-model'}]}),
-    trace('unknown',{observations:[{...generation,model:''}]}),
-  ]})
+test('model calls use server aggregates without loading all traces', async () => {
+  const {html,requests} = await render('/overview', {'/api/overview':{
+    totalTraces:5,totalTokens:50,models:[{name:'model-a',tokens:30,count:3,cost:0.003},{name:'legacy-model',tokens:10,count:1,cost:0.001},{name:'Unknown',tokens:10,count:1,cost:0.001}],series:[],recentTraces:[],
+  }})
   const modelList = html.match(/class="model-list"[\s\S]*?class="model-total"/)?.[0] || ''
   assert.match(modelList, /model-a[\s\S]*?3 calls/)
   assert.match(modelList, /legacy-model[\s\S]*?1 calls/)
   assert.match(modelList, /Unknown[\s\S]*?1 calls/)
-  assert.doesNotMatch(modelList, /unused-model/)
+  assert.ok(requests.every(url => url.pathname !== '/api/traces'))
 })
 
 test('recent trace status uses execution state and falls back to sample level', async () => {
-  const body = tableBody(await render('/overview', {traces:[
+  const body = tableBody((await render('/overview', {'/api/overview':{recentTraces:[
     trace('running',{status:'running'}),
     trace('aborted',{status:'aborted',level:'WARNING'}),
     trace('completed',{status:'completed',level:'WARNING'}),
     trace('error',{status:'error'}),
     trace('sample-warning',{source:'sample',status:undefined,level:'WARNING'}),
-  ]}))
+  ]}})).html)
   for (const [status, label] of [['running','Running'],['aborted','Aborted'],['completed','Completed'],['error','Error'],['warning','Warning']]) {
-    assert.match(body, new RegExp(`class="(?:status ${status}|${status} status)"[^>]*><span[^>]*><\\/span>${label}<\\/span>`))
+    assert.match(body, new RegExp(`class="(?:status ${status}|${status} status)"[^>]*><span[^>]*><\/span>${label}<\/span>`))
   }
 })
