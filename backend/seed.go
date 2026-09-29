@@ -124,7 +124,7 @@ func seedTraces(now time.Time) []Trace {
 			toolData:  map[string]any{"matches": []map[string]any{{"path": "internal/api/search.go", "line": 42, "snippet": "result := make(chan Result)\ngo func() { result <- fetch(ctx, query) }()"}, {"path": "internal/client/search.go", "line": 18, "snippet": "func fetch(ctx context.Context, query string) Result"}}, "files_searched": 84},
 		},
 	}
-	models := []string{"gpt-4.1", "claude-sonnet-4-20250514", "gpt-4.1-mini", "gemini-2.5-flash", "gpt-4.1"}
+	models := []string{"local/deepseek-v4-flash", "openai-codex/gpt-5.6-sol"}
 	traces := make([]Trace, 0, 96)
 	firstDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -6)
 	groupSpacing := (now.Sub(firstDay) - 2*time.Hour) / 23
@@ -243,13 +243,8 @@ func round(v float64, digits int) float64 {
 
 func tokenCost(model string, input, output int) float64 {
 	inRate, outRate := 2.0, 8.0
-	switch model {
-	case "gpt-4.1-mini":
-		inRate, outRate = 0.4, 1.6
-	case "claude-sonnet-4-20250514":
-		inRate, outRate = 3, 15
-	case "gemini-2.5-flash":
-		inRate, outRate = 0.3, 2.5
+	if model == "local/deepseek-v4-flash" {
+		inRate, outRate = 0, 0
 	}
 	return round((float64(input)*inRate+float64(output)*outRate)/1_000_000, 8)
 }
