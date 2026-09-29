@@ -100,13 +100,13 @@ export default function (pi: ExtensionAPI) {
     for (const item of current.observations) {
       if (item.status === 'running') item.duration = Math.max(0, current.latency - item.startTime)
     }
-    const generations = current.observations.filter(item => item.type === 'GENERATION')
-    current.inputTokens = generations.reduce((sum, item) => sum + item.inputTokens, 0)
-    current.outputTokens = generations.reduce((sum, item) => sum + item.outputTokens, 0)
+    const calls = current.observations.filter(item => item.type === 'GENERATION' || item.type === 'TOOL')
+    current.inputTokens = calls.reduce((sum, item) => sum + item.inputTokens, 0)
+    current.outputTokens = calls.reduce((sum, item) => sum + item.outputTokens, 0)
     current.totalTokens = current.inputTokens + current.outputTokens
-    current.cost = generations.reduce((sum, item) => sum + item.cost, 0)
-    current.metadata.cacheReadTokens = generations.reduce((sum, item) => sum + numeric((item.metadata.usage as any)?.cacheRead), 0)
-    current.metadata.cacheWriteTokens = generations.reduce((sum, item) => sum + numeric((item.metadata.usage as any)?.cacheWrite), 0)
+    current.cost = calls.reduce((sum, item) => sum + item.cost, 0)
+    current.metadata.cacheReadTokens = calls.reduce((sum, item) => sum + numeric((item.metadata.usage as any)?.cacheRead), 0)
+    current.metadata.cacheWriteTokens = calls.reduce((sum, item) => sum + numeric((item.metadata.usage as any)?.cacheWrite), 0)
     if (root) {
       root.inputTokens = current.inputTokens
       root.outputTokens = current.outputTokens
@@ -296,6 +296,13 @@ export default function (pi: ExtensionAPI) {
     const item = tools.get(event.toolCallId)
     if (!item) return
     item.output = text(event.result)
+    const usage = event.result?.usage
+    if (usage) {
+      item.inputTokens = numeric(usage.input) + numeric(usage.cacheRead) + numeric(usage.cacheWrite)
+      item.outputTokens = numeric(usage.output)
+      item.cost = numeric(usage.cost?.total)
+      item.metadata.usage = usage
+    }
     stop(item, event.isError ? 'error' : 'completed')
     publish()
   })
