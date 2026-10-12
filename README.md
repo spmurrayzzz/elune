@@ -1,6 +1,6 @@
 # elune
 
-Inspect AI agent traces, model costs, tool calls, sessions, and scores on your computer. Built with Vue 3, Vite, Go, and SQLite.
+Inspect AI agent traces, model costs, tool calls, sessions, and scores on your computer. Run the standalone Vue 3, Vite, Go, and SQLite app, or embed tracing in a Node.js host.
 
 <table>
   <tr>
@@ -15,7 +15,23 @@ Inspect AI agent traces, model costs, tool calls, sessions, and scores on your c
 
 Sample data only. Select an image to open it at full size. [View scores](docs/screenshots/scores.jpg).
 
-## Start the app
+## Embed in a host application
+
+Install the framework-neutral `@elune/embedded` package directly from this repository. It needs Node.js 22.19 or later, with no separate service or sibling checkout.
+
+```sh
+npm install spmurrayzzz/elune
+```
+
+Use the core store and Pi adapter for in-process capture. Optional Vue 3 views provide an inspector, a session workspace, and a cross-project explorer. Import `@elune/embedded/vue/style.css` explicitly when using them.
+
+[Embedding guide](docs/embedding.md): store API, Pi lifecycle and child usage, Vue client and navigation contracts, content limits, and host privacy duties.
+
+<a href="docs/screenshots/embedded-workspace.png"><img src="docs/screenshots/embedded-workspace.png" width="100%" alt="Embedded session workspace with sample observations and selected tool output"></a>
+
+Sample embedded views: [inspector](docs/screenshots/embedded-inspector.png), [workspace](docs/screenshots/embedded-workspace.png), [explorer](docs/screenshots/embedded-explorer.png).
+
+## Start the standalone app
 
 Requirements: Go 1.25 or later, Node.js 22.19 or later, npm, and Make.
 
@@ -36,11 +52,13 @@ For frontend development, keep the backend running. In a second terminal, run `n
 ## Keep data private
 
 - Keep elune and `PI_TRACE_URL` local. The server has no user authentication or built-in encryption. Do not expose it through a public proxy or tunnel.
-- Traces can contain prompts, tool results, file paths, and secrets. The extension does not remove secrets. Review exports and screenshots before sharing them.
+- Traces can contain prompts, tool results, file paths, and secrets. The HTTP exporter does not remove secrets. Review exports and screenshots before sharing them.
 - Database files and trace queues are not encrypted. Git ignores `backend/data/` and `work/`. Exclude custom storage paths and exports from version control.
-- Pi sends model requests to your selected provider. The extension sends traces to `PI_TRACE_URL`.
+- Pi sends model requests to your selected provider. The HTTP exporter sends traces to `PI_TRACE_URL`.
 
-## Connect Pi
+## Connect Pi to the standalone app
+
+`integrations/pi/` exports traces over HTTP to `PI_TRACE_URL`. It needs the standalone server. Embedded hosts use `@elune/embedded/pi` without that service or environment variable.
 
 Use an installed Pi coding agent with access to a model. The integration checks used Pi 0.81.0.
 
@@ -58,7 +76,7 @@ The extension captures retries, canceled runs, and context compaction. It saves 
 
 ## Configuration
 
-Set these environment variables before you start the related process.
+These variables configure the standalone backend and HTTP exporter. Set them before you start the related process. Embedded hosts configure the library through its API.
 
 | Process | Variable | Default |
 | --- | --- | --- |

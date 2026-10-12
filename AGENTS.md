@@ -3,6 +3,8 @@
 ## Working rules
 
 - Read `README.md` and inspect `git status` before changes. Preserve existing work.
+- For embedded work, read `docs/embedding.md` and the affected source. Keep API examples consistent with package exports and public Pi SDK contracts.
+- Keep the standalone Go app and `integrations/pi/` HTTP exporter separate from the embedded Node.js path. Do not assume the standalone app uses the JavaScript core.
 - Do only the requested work. Ask when missing requirements affect the result.
 - Do not add code comments, tests, or documentation unless the user asks.
 - Follow the existing style. Prefer simple code and avoid unnecessary abstractions.
@@ -17,8 +19,12 @@
 | --- | --- |
 | `frontend/` | Vue 3 and Vite application, written in JavaScript |
 | `backend/` | Go HTTP API, SQLite storage, and sample data |
-| `integrations/pi/` | TypeScript Pi extension and persistent trace queue |
-| `docs/screenshots/` | README images with sample data |
+| `integrations/pi/` | Standalone HTTP exporter for Pi and persistent trace queue |
+| `embedded/` | Framework-neutral Node.js store, SQLite worker, and Pi capture adapter |
+| `embedded/vue/` | Optional Vue 3 source components and scoped stylesheet |
+| `package.json` | `@elune/embedded` package exports and runtime requirements |
+| `docs/embedding.md` | Canonical embedded API and host integration guide |
+| `docs/screenshots/` | Standalone and embedded previews with sample data |
 | `work/` | Ignored temporary files and integration fixtures |
 
 Use the project name `elune`. Keep the default dark theme and custom lunar symbol.
@@ -58,7 +64,9 @@ This check makes model requests, can incur charges, and adds traces. Do not use 
 - Keep SQLite WAL mode, transactions, and private file permissions.
 - Preserve existing traces during migration. Keep the original JSON file after its one-time import.
 - Preserve trace revisions, scores, and bookmarks during Pi updates. Publish live events only after a successful commit.
-- Keep filtering and pagination in the backend. Preserve Unicode search, decoded tag search, and complete trace names.
+- Keep filtering and pagination in the backend or embedded store. Preserve Unicode search, decoded tag search, and complete trace names.
+- Keep embedded capture independent of UI visibility. Hosts own navigation, transport, focus, storage lifetime, and child usage attribution.
+- Preserve embedded content bounds and explicit durability errors. Field omission is not guaranteed secret redaction.
 - Use sample data for tests, screenshots, and examples. Trace content can include secrets and private file paths.
 - Never commit databases, trace queues, credentials, exports, or real Pi sessions.
 - `backend/data/` and `work/` are ignored. Check exclusions for custom database and queue paths before staging files.
