@@ -8,10 +8,20 @@
   },
   "exports": {
     ".": "./embedded/index.js",
-    "./pi": "./embedded/pi.js"
+    "./pi": "./embedded/pi.js",
+    "./vue": "./embedded/vue/index.js",
+    "./vue/style.css": "./embedded/vue/style.css"
   },
   "files": [
     "embedded/",
     "LICENSE"
-  ]
+  ],
+  "peerDependencies": {
+    "vue": "^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    }
+  }
 }
