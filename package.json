@@ -1,0 +1,16 @@
+{
+  "name": "@elune/embedded",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.19"
+  },
+  "exports": {
+    ".": "./embedded/index.js"
+  },
+  "files": [
+    "embedded/",
+    "LICENSE"
+  ]
+}
