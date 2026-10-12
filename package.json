@@ -7,7 +7,8 @@
     "node": ">=22.19"
   },
   "exports": {
-    ".": "./embedded/index.js"
+    ".": "./embedded/index.js",
+    "./pi": "./embedded/pi.js"
   },
   "files": [
     "embedded/",
