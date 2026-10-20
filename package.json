@@ -6,6 +6,9 @@
   "engines": {
     "node": ">=22.19"
   },
+  "scripts": {
+    "test:embedded": "node test/embedded.test.mjs"
+  },
   "exports": {
     ".": "./embedded/index.js",
     "./pi": "./embedded/pi.js",

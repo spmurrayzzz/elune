@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { chmodSync, closeSync, constants, lstatSync, mkdirSync, openSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { record, clean } from './content.js'
+import { prepareWindowsStorage } from './windows-storage.js'
 
 let db
 const statuses = new Set(['running', 'completed', 'error', 'aborted'])
@@ -48,7 +49,7 @@ function permissions() {
     try {
       const path = workerData.databasePath + suffix
       if (!lstatSync(path).isFile()) throw new Error('Database files must be regular files without symlinks')
-      chmodSync(path, 0o600)
+      if (process.platform !== 'win32') chmodSync(path, 0o600)
     } catch (error) { if (error.code !== 'ENOENT') throw error }
   }
 }
@@ -56,10 +57,11 @@ function permissions() {
 function initialize() {
   const path = workerData.databasePath
   const directory = dirname(path)
-  mkdirSync(directory, { recursive: true, mode: 0o700 })
+  if (process.platform === 'win32') prepareWindowsStorage(path)
+  else mkdirSync(directory, { recursive: true, mode: 0o700 })
   const info = lstatSync(directory)
   if (!info.isDirectory()) throw new Error('Database directory must be a directory without a symlink')
-  if ((info.mode & 0o077) !== 0) throw new Error('Database directory must have private permissions (0700)')
+  if (process.platform !== 'win32' && (info.mode & 0o077) !== 0) throw new Error('Database directory must have private permissions (0700)')
   try { if (!lstatSync(path).isFile()) throw new Error('Database path must be a regular file without a symlink') } catch (error) { if (error.code !== 'ENOENT') throw error }
   const fd = openSync(path, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600)
   closeSync(fd)

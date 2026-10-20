@@ -1,0 +1,36 @@
+name: Embedded storage
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        node: ['22.19.0', '24.x']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Test embedded storage
+        if: runner.os != 'Windows'
+        run: npm run test:embedded
+      - name: Test Windows storage and account isolation
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ELUNE_TEST_REQUIRE_WINDOWS_CHECKS: '1'
+          ELUNE_TEST_WINDOWS_ACCOUNTS: '1'
+        run: npm run test:embedded
